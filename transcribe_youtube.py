@@ -1,8 +1,16 @@
 import os
+import re
 import platform
 import yt_dlp
 import whisper
 
+# === Utility: Sanitize filename for Windows ===
+def sanitize_filename(title):
+    # Replace all illegal characters in filenames: \ / : * ? " < > | with _
+    return re.sub(r'[\\/*?:"<>|]', "_", title).replace(" ", "_")
+
+
+# === Step 1: Download Audio from YouTube ===
 def download_audio_and_get_title(youtube_url, output_dir="audio"):
     # Get video title safely
     ydl_opts_info = {
@@ -13,7 +21,7 @@ def download_audio_and_get_title(youtube_url, output_dir="audio"):
 
     with yt_dlp.YoutubeDL(ydl_opts_info) as ydl:
         info_dict = ydl.extract_info(youtube_url, download=False)
-        title = info_dict.get('title', 'audio').replace(" ", "_").replace("/", "_")
+        title = sanitize_filename(info_dict.get('title', 'audio'))
 
     audio_output_path = f"{output_dir}_{title}"
 
@@ -36,25 +44,24 @@ def download_audio_and_get_title(youtube_url, output_dir="audio"):
     return f"{audio_output_path}.mp3", title
 
 
-def transcribe_audio(audio_path):
-    model = whisper.load_model("base")  # Change to "small", "medium", or "large" if needed
+# === Step 2: Transcribe Audio Using Whisper ===
+def transcribe_audio(audio_path, model):
     result = model.transcribe(audio_path)
     return result['text']
 
 
+# === Step 3: Save Transcription to .txt and Open ===
 def save_transcription(title, transcription):
-    # Sanitize filename
-    safe_title = "".join(c if c.isalnum() or c in " _-" else "_" for c in title)
+    safe_title = sanitize_filename(title)
     filename = f"transcription_{safe_title}.txt"
 
-    # Write transcription to file
     with open(filename, "w", encoding="utf-8") as f:
         f.write(transcription)
 
     full_path = os.path.abspath(filename)
-    print(f"✅ Transcription saved to: {full_path}")
+    print(f"\n✅ Transcription saved to: {full_path}")
 
-    # Open file automatically
+    # Try to open the file automatically
     try:
         system = platform.system()
         if system == "Windows":
@@ -67,16 +74,21 @@ def save_transcription(title, transcription):
         print(f"⚠️ Could not open the file automatically: {e}")
 
 
+# === Main Execution ===
 if __name__ == "__main__":
-    youtube_url = "https://www.youtube.com/watch?v=BJjsfNO5JTo"  # Replace with your own
+    youtube_url = "https://www.youtube.com/watch?v=u-3IILWQPRM"  # Replace with your own URL
 
-    # Step 1: Download audio and extract title
+    print("🔄 Downloading audio...")
     audio_path, title = download_audio_and_get_title(youtube_url)
     print(f"🎧 Audio downloaded: {audio_path}")
 
-    # Step 2: Transcribe the audio
-    transcription = transcribe_audio(audio_path)
-    print(f"📝 First 1000 chars of transcription:\n{transcription[:1000]}")
+    print("🔄 Loading Whisper model...")
+    model = whisper.load_model("small")  # You can use 'base', 'tiny', etc. for faster models
+    print("✅ Model loaded.")
 
-    # Step 3: Save transcription to file
+    print("📝 Transcribing audio...")
+    transcription = transcribe_audio(audio_path, model)
+    print(f"📋 Preview (first 1000 chars):\n{transcription[:1000]}")
+
+    print("💾 Saving transcription...")
     save_transcription(title, transcription)
